@@ -1,53 +1,47 @@
-(package-initialize)
+;; add melpa to package archives, as vterm is on melpa:
 (require 'package)
-(add-to-list 'package-archives
-             '("melpa-stable" . "http://stable.melpa.org/packages/") t)
+(add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/") t)
+(package-initialize)
 
-(dolist (package '(use-package))
-   (unless (package-installed-p package)
-       (package-install package)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; required packages
-(use-package spacemacs-theme :ensure t)
-(use-package elpy :ensure t :init (elpy-enable))
-(use-package blacken :ensure t)
-(use-package python-pytest :ensure t)
+(require 'use-package)
+(setq use-package-always-ensure t)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; theme
-(load-theme 'spacemacs-dark t)
+
+(use-package spacemacs-theme
+  :vc (:url "https://github.com/nashamri/spacemacs-theme" :rev :newest)
+  :config
+  (load-theme 'spacemacs-dark t))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; copyrigth
-(defvar copyright-owner "<COPYRIGHT OWNER>") ;; change this variable
+;; base packages
 
+(use-package treemacs :ensure t)
+
+(use-package corfu
+  :custom
+  (corfu-auto t)          ;; Enable automatic popup
+  (corfu-quit-no-match t) ;; Hide popup when no match is found
+  :init
+  (global-corfu-mode))
+
+;; markdown
+;; requires `brew install pandoc`
+(use-package markdown-mode
+  :ensure t
+  :custom
+  (markdown-command "pandoc"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; global settings
-
-(setq compile-command "make ")
+;; global keys
 (global-set-key (kbd "<f5>") 'revert-buffer)
-(global-set-key (kbd "<f6>") 'kill-buffer)
+(global-set-key (kbd "<f6>") 'recompile)
 (global-set-key (kbd "<f7>") 'compile)
-(global-set-key (kbd "<f8>") 'recompile)
+(global-set-key (kbd "<f8>") 'vterm-other-window)
 (global-set-key (kbd "<f9>") 'comment-region)
 (global-set-key (kbd "<f10>") 'uncomment-region)
-(global-set-key (kbd "<f12>") 'python-pytest-dispatch)
-
-(add-hook 'after-init-hook 'global-company-mode)
-
-(require 'ansi-color)
-(defun endless/colorize-compilation ()
-  "Colorize from `compilation-filter-start' to `point'."
-  (let ((inhibit-read-only t))
-    (ansi-color-apply-on-region
-     compilation-filter-start (point))))
-
-(add-hook 'compilation-filter-hook
-          #'endless/colorize-compilation)
-
-(add-hook 'find-file-hook 'auto-insert)
+(global-set-key (kbd "<f12>") 'claude-code)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; inhibit startup screen
@@ -70,77 +64,94 @@
 (put 'downcase-region 'disabled nil)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; c++
+;; make URLs clickable
 
-(setq c-default-style "k&r")
-(setq indent-tabs-mode "nil")
-(setq-default indent-tabs-mode nil)
-(setq c-basic-offset 4)
-(c-set-offset 'substatement-open '0)
-(c-set-offset 'inline-open '0)
+(add-hook 'text-mode-hook 'goto-address-mode)
+(add-hook 'prog-mode-hook 'goto-address-mode)
+(add-hook 'vterm-mode-hook 'goto-address-mode)
 
-(add-hook 'find-file-hook 'auto-insert)
-(setq auto-insert-alist
-      '(("\\.hpp\\'"
-	 nil
-	 '(setq v2 (upcase (concat
-			    (file-name-nondirectory
-			     (file-name-sans-extension buffer-file-name))
-			    "_" (file-name-extension buffer-file-name) "__" )))
-	 "// Copyright © " (format-time-string "%Y") ". " (insert copyright-owner) ". All rights reserved." n
-	 "#ifndef " v2 n
-	 "#define " v2 n n
-	 "class " (file-name-nondirectory (file-name-sans-extension buffer-file-name)) " {"
-	 n _ n
-	 "};" n n
-	 "#endif" n
-	 (indent-region (point-min) (point-max) nil)
-	 )))
-
-(setq auto-mode-alist (append '(("\\.cu$" . c++-mode)) auto-mode-alist))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; gdb
-(setq gdb-many-windows t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; latex
-(add-hook 'reftex-load-hook 'imenu-add-menubar-index)
-(add-hook 'reftex-mode-hook 'imenu-add-menubar-index)
-(setq LaTeX-command "latex")
-(setq TeX-PDF-mode t)
-(add-hook 'LaTeX-mode-hook 'turn-on-flyspell)
-(setq TeX-view-program-list (quote (("evince" ("") ""))))
-(setq doc-view-continuous t)
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; sh
-(add-hook 'sh-mode-hook
-	  (lambda ()
-	    (set (make-local-variable 'compile-command)
-		 (format "bash %s " (file-name-nondirectory buffer-file-name)))
-	    )
-	  )
+;; use windows browser to open URLs when on WSL
+;; requires sudo apt install wslu
+(setq browse-url-browser-function 'browse-url-default-browser)
+(setq browse-url-browser-function
+      (lambda (url &optional _new-window)
+        (start-process "browser" nil "wslview" url)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; python
-(setq elpy-rpc-timeout 10)
-(setq elpy-rpc-virtualenv-path 'current)
-(setq elpy-rpc-backend "jedi")
 
-(add-to-list 'auto-insert-alist '("\\.py\\'" . skeletons/copyright-py))
-(define-skeleton skeletons/copyright-py
-  "copyright statement python files"
-  nil
-  "# Copyright (C) " (format-time-string "%Y") ". " (insert copyright-owner) ". All rights reserved." n n n
-  )
+;; pet detects the per-project Python interpreter (conda, venv, poetry, etc.)
+;; and lets eglot use the matching pylsp instead of the base-env one.
+;; Each project env needs: pip install "python-lsp-server[all]"
+(use-package yaml :ensure t)
 
-(add-hook 'python-mode-hook 
-          (lambda ()
-            (set (make-local-variable 'compile-command)
-                 (format "python %s " (file-name-nondirectory buffer-file-name)))))
+(use-package pet
+  :ensure t
+  :config
+  (pet-eglot-setup)
+  (add-hook 'python-mode-hook 'eglot-ensure))
 
+;; install black on base env and make it available through an alias
+;; e.g. `alias black='conda run -n base -- black'`
+(use-package blacken
+  :ensure t
+  :custom
+  (blacken-line-length 100)
+  (blacken-target-version "py313"))
 
-(setq blacken-line-length 100)
-(setq blacken-skip-string-normalization t)
-(setq python-pytest-arguments (quote ("--color" "--capture=no" "--verbose")))
+(use-package python-pytest
+  :ensure t
+  :bind (:map python-mode-map
+              ("C-c t t" . python-pytest-dispatch)
+              ("C-c t f" . python-pytest-file)
+              ("C-c t p" . python-pytest-function-at-point)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; claude code
+
+;; install required inheritenv dependency:
+(use-package inheritenv
+  :vc (:url "https://github.com/purcell/inheritenv" :rev :newest))
+
+;; for eat terminal backend:
+(use-package eat :ensure t)
+
+;; for vterm terminal backend:
+(use-package vterm :ensure t)
+
+;; monet
+(use-package monet
+  :vc (:url "https://github.com/stevemolitor/monet" :rev :newest))
+
+;; install claude-code.el
+(use-package claude-code :ensure t
+  :vc (:url "https://github.com/stevemolitor/claude-code.el" :rev :newest)
+  :config
+  ;; optional IDE integration with Monet
+  (add-hook 'claude-code-process-environment-functions #'monet-start-server-function)
+  (monet-mode 1)
+
+  (claude-code-mode)
+  :bind-keymap ("C-c c" . claude-code-command-map)
+
+  ;; Optionally define a repeat map so that "M" will cycle thru Claude auto-accept/plan/confirm modes after invoking claude-code-cycle-mode / C-c M.
+  :bind
+  (:repeat-map my-claude-code-map ("M" . claude-code-cycle-mode)))
+
+;; prevent monet diff buffer from stealing focus
+(defun my/monet-display-diff-no-select (orig-fun &rest args)
+  "Advice to display diff buffer without selecting its window."
+  (save-selected-window
+    (apply orig-fun args)))
+(with-eval-after-load 'monet
+  (advice-add 'monet-simple-diff-tool :around #'my/monet-display-diff-no-select))
+
+(setq claude-code-terminal-backend 'vterm)
+(setq claude-code-toggle-auto-select t)
+;; open claude code terminal on the right
+(setq claude-code-display-window-fn
+      (lambda (buffer)
+        (let ((window (display-buffer buffer '((display-buffer-in-side-window)
+                                               (side . right)
+                                               (window-width . 0.5)))))
+          (select-window window))))
